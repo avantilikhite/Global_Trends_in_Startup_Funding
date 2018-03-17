@@ -1,0 +1,256 @@
+---
+title: "Data analysis of funding to various companies from 2005 to 2013"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+---
+<style type="text/css">
+
+.chart-title {  /* chart_title  */
+   font-size: 30px;
+   font-family: Ariel;
+}
+#funding_type {  /* funding_type  */
+   font-size: 25px;
+   font-family: Ariel;
+   text-align: center;
+}
+
+</style>
+
+```{r global, include=FALSE}
+# load data in 'global' chunk so it can be shared by all users of the dashboard
+library(flexdashboard)
+rm(list=ls(all=TRUE)) 
+
+library(tidyverse)
+library(gridExtra)
+library(GGally)
+library(shiny)
+library(plotly)
+library(shiny)
+library(plotly)
+library(ggthemes)
+
+Project_Data <- read.csv("Project.csv",stringsAsFactors = FALSE)
+#Remove the funding details if the funding was done before 2004
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year>=2005))
+#Since we don't have much data after 2013 let's limit our analysis to data before 2014
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year <2014))
+#Remove NA values
+Project_Data <- mutate(Project_Data %>% na.omit(Project_Data)) 
+top_co_category<-Project_Data %>%
+                 filter(company_category_code!='') %>% 
+                 group_by(company_category_code) %>% 
+                 summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                 arrange(desc(TotalAmount)) %>%
+                 head(7)
+
+Project_Data$Top_Company_Category = ifelse(Project_Data$company_category_code %in% top_co_category$company_category_code, Project_Data$company_category_code, "Other")
+
+top_co_country<- Project_Data %>%
+                  filter(company_country_code!='') %>% 
+                  group_by(company_country_code) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+
+
+Project_Data$Top_company_country = ifelse(Project_Data$company_country_code %in% top_co_country$company_country_code, Project_Data$company_country_code, "Other")
+```
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+####**Entrepreneurs**: Please select the tentative amount of funding to get a proposal about the suitable type of funding and categories:
+
+```{r}
+radioButtons('funding_round_type', '', c("Not sure, show me everything"="All", "$0.5 Million"="angel", "$3 Million"="series-a","$5 Million"="venture", "$10 Million"="series-b","$15 Million"	= "series-c+", "$20 Million"="private-equity", "$200 Million"="post-ipo"))
+```
+
+####**Note**: This dashboard has been developed using the [Crunchbase dataset](https://data.crunchbase.com/docs/funding-round) from [Mode Analytics](https://modeanalytics.com/avanti_likhite/reports/b4e227db8a0b/queries/ae79f3c1022a/data).
+
+## Row 1 {data-height=80}
+### 
+```{r echo = FALSE, include = TRUE}
+textOutput("funding_type")
+output$funding_type = renderText({
+  ifelse(input$funding_round_type == "All", paste("SERIES-A is the most popular funding type. Please choose an amout to get a specific recomendation."),paste("The suggested funding type is:",toupper(input$funding_round_type)))
+})
+```
+
+## Row 1 {data-height=150}
+
+###
+
+```{r echo = FALSE, include = TRUE}
+valueBoxOutput("vbox_companies")
+output$vbox_companies <- renderValueBox({
+  filteredData <- Project_Data
+  if(input$funding_round_type != 'All')
+    filteredData <- Project_Data %>% filter(funding_round_type == input$funding_round_type)
+  
+  valueBox(length(unique(filteredData$company_name)),caption=" Number of companies funded", color="rgb(100,100,100)")
+})
+```
+
+###
+
+```{r echo = FALSE, include = TRUE}
+valueBoxOutput("vbox_investors")
+output$vbox_investors <- renderValueBox({
+  filteredData <- Project_Data
+  if(input$funding_round_type != 'All')
+    filteredData <- Project_Data %>% filter(funding_round_type == input$funding_round_type)
+  
+  valueBox(length(unique(filteredData$investor_name)),caption=" Number of investors", color="rgb(200,100,100)")
+})
+```
+
+###
+
+```{r echo = FALSE, include = TRUE}
+valueBoxOutput("vbox_amount_raised")
+output$vbox_amount_raised <- renderValueBox({
+  filteredData <- Project_Data
+  if(input$funding_round_type != 'All')
+    filteredData <- Project_Data %>% filter(funding_round_type == input$funding_round_type)
+  
+  filteredData <- filteredData %>%
+    group_by(funding_round_type) %>%
+    summarise(Total_Amount=sum(raised_amount_usd)) %>%
+    arrange(desc(Total_Amount)) %>% 
+    select(Total_Amount)  %>% 
+    head(1)
+  
+  valueBox(paste("$",format(round(filteredData[1]/1e9, 1), trim = TRUE), "B"), caption="Total amount raised", color="rgb(26,110,204)")
+})
+```
+
+###
+
+```{r echo = FALSE, include = TRUE}
+valueBoxOutput("vbox_top_country")
+output$vbox_top_country <- renderValueBox({
+  filteredData <- Project_Data
+  if(input$funding_round_type != 'All')
+    filteredData <- Project_Data %>% filter(funding_round_type == input$funding_round_type)
+  filteredData <-filteredData %>%
+    filter(Top_company_country!="") %>% 
+    group_by(Top_company_country) %>%
+    summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+    arrange(desc(Total_Amount)) %>% 
+    select(Top_company_country) %>% 
+    head(1) 
+  
+  valueBox(filteredData[1], caption="Country with highest average amount raised", color="rgb(0,128,0)")
+})
+```
+
+## Row 2 {data-height=400}  
+### 
+```{r}
+plotlyOutput("plot", height = "100%")
+
+output$plot <- renderPlotly({
+  data <- Project_Data
+  if(input$funding_round_type != 'All')
+    data <- data %>% filter(funding_round_type == input$funding_round_type)
+  
+  data <- data %>% 
+    group_by(funded_year) %>% 
+    summarise(CompanyCount=n())
+  
+  title= switch(input$funding_round_type,
+         "angel" = "Total number of companies being funded in the year is steadily increasing",
+         "series-a" = "Total number of companies being funded in the year is rapidly increasing post 2009",
+         "venture" = "Total number of companies being funded in the year was steadily increasing until 2012, but in 2013 there was a sharp decline",
+         "series-b" = "Total number of companies being funded in the year seems to be on a recovery path in 2013 from the drop after the slump from 2009 to 2012",
+         "series-c+" = "Total number of companies being funded in the year is on a consistent upward trajectory post 2011",
+         "private-equity" = "Total number of companies being funded in the year is increasing exponentially since 2011",
+         "post-ipo" = "Total number of companies being funded in the year suffered a major blow in 2011, but now seems to be recovering fast",
+         "Total number of companies being funded in the year is steadily increasing")
+  
+  plot_ly(data, x=data$funded_year) %>%
+    layout(title=title,xaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=2,
+        tickwidth=1,
+        tickcolor='#000'),
+        yaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=4,
+        tickwidth=1,
+        tickcolor='#000',title='Number of companies funded')) %>% 
+    add_lines(y=data$CompanyCount, name='Total companies funded') 
+    
+  })
+```
+
+Row 
+-----------------------------------------------------------------------
+
+### 
+    
+```{r}
+plotlyOutput("categories")
+output$categories <- renderPlotly({
+  data <- Project_Data
+  if(input$funding_round_type != 'All')
+    data <- data %>% filter(funding_round_type == input$funding_round_type)
+
+  data <- data %>%
+    group_by(Top_Company_Category) %>%
+    summarise(Total_Amount=mean(raised_amount_usd)) %>%
+    arrange(desc(Total_Amount))
+  
+  title= switch(input$funding_round_type,
+         "angel" = "Angle investors seem to be supporting every major industry",
+         "series-a" = "Biotech companies have benefited the most 
+from series-a funding",
+         "venture" = "Cleantech companies have benefited the most 
+from venture funding",
+         "series-b" = "Cleantech and Biotech companies have benefited the most 
+from series-b funding",
+         "series-c+" = "Ecommerce and Web companies have benefited the most 
+from series-c+ funding",
+         "private-equity" = "Cleantech, Software and Web companies have benefited the most 
+from private-equity funding",
+         "post-ipo" = "Mobile industry is dominating all other industries",
+         "Cleantech and biotech are most popular overall")
+  
+  plot_ly(data, x=reorder(factor(data$Top_Company_Category),desc(data$Total_Amount)),            y=data$Total_Amount, name=input$funding_round_type, type="bar") %>% 
+    layout(title = title, xaxis = list(
+          tickfont = list(family="Arial, sans-serif",
+                          size = 14, color="Black"),
+          showticklabels = TRUE,
+          showgrid = F, zeroline = FALSE,
+  showline = FALSE), 
+        yaxis = list(
+          tickfont = list(family="Arial, sans-serif",size = 17, color="Black"),
+          showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=2,
+        tickwidth=1,
+        tickcolor='#000',title='Average Amount raised in $')
+      )
+})
+```
+
+### Major Investors in this Category
+```{r}
+div(renderTable({
+  data <- Project_Data
+  if(input$funding_round_type != 'All')
+    data <- data %>% filter(funding_round_type == input$funding_round_type)
+  
+  data %>%
+    select(investor_name,company_name, raised_amount_usd) %>%
+    group_by(investor_name) %>%
+    summarise(Total_Investment= as.integer(format(round(sum(raised_amount_usd))/1e6, 1)), Companies_funded = n()) %>%   
+    arrange(desc(!! as.name('Companies_funded'))) %>% 
+    head(5)%>% 
+    select('Investor Name'=investor_name, 'Companies funded' = Companies_funded, 'Total Investment ($ million)' =Total_Investment)
+  }), style = "font-size:125%")
+
+```

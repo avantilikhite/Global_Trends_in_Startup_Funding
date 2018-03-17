@@ -1,0 +1,266 @@
+---
+title: "Global Trends in startup funding"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: false
+    df_print: paged
+---
+
+Author: Avanti
+
+Date:  `r format(Sys.time(), '%B %d, %Y')`
+
+```{r echo = FALSE, include = TRUE}
+# Course: BUAN 5210
+# Title: Final Project BUAN
+# Purpose: Perform EDA on the data about funding for various companies across the world, collected from Crunchbase from 2005 to 2013.
+# Date: `r format(Sys.time(), '%B %d, %Y')`
+# Author: Avanti
+```
+
+```{r echo = FALSE, include = FALSE}
+
+# Clear working environment
+
+rm(list=ls(all=TRUE)) 
+
+# The tidyverse package contains ggplot2, tibble, tidyr, readr, purr, and dplyr among others
+library(tidyverse)
+# The gridExtra package contains grid.arrange function used to combine plots
+library(gridExtra)
+# The GGally package contains ggpairs which is a custom correlation graph for ggplot2
+library(GGally)
+library(shiny)
+library(lubridate)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(formattable)
+```
+
+```{r echo = FALSE, include = FALSE}
+# Load data in a dataframe
+Project_Data <- read.csv("Project.csv",stringsAsFactors = FALSE)
+#Remove the funding details if the funding was done before 2004
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year>=2005))
+#Since we don't have much data after 2013 let's limit our analysis to data before 2014
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year <2014))
+
+Project_Data <- mutate(Project_Data %>% na.omit(Project_Data)) 
+
+top_co_category<-Project_Data %>%
+                 filter(company_category_code!='') %>% 
+                 group_by(company_category_code) %>% 
+                 summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                 arrange(desc(TotalAmount)) %>%
+                 head(7)
+
+Project_Data$Top_Company_Category = ifelse(Project_Data$company_category_code %in% top_co_category$company_category_code, Project_Data$company_category_code, "Other")
+
+top_inv_category<-Project_Data %>%
+                  filter(investor_category_code!='' & investor_category_code !="other") %>% 
+                  group_by(investor_category_code) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+Project_Data$Top_investor_Category = ifelse(Project_Data$investor_category_code %in% top_inv_category$investor_category_code, Project_Data$investor_category_code, "Other")
+  
+top_co_country<- Project_Data %>%
+                  filter(company_country_code!='') %>% 
+                  group_by(company_country_code) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+
+
+Project_Data$Top_company_country = ifelse(Project_Data$company_country_code %in% top_co_country$company_country_code, Project_Data$company_country_code, "Other")
+
+ top_inv_country<-Project_Data %>%
+                  filter(investor_country_code!='') %>% 
+                  group_by(investor_country_code) %>% 
+                  summarise(TotalAmount = n()) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+ 
+ 
+Project_Data$Top_investor_country = ifelse(Project_Data$investor_country_code %in% top_inv_country$investor_country_code, Project_Data$investor_country_code, "Other")
+
+ top_inv_name<-Project_Data %>%
+                  filter(investor_name!='') %>% 
+                  group_by(investor_name) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+ 
+ 
+Project_Data$Top_investor_name = ifelse(Project_Data$investor_name %in% top_inv_name$investor_name, Project_Data$investor_name, "Other")
+ 
+
+top_co_name<-Project_Data %>%
+                  #filter(company_name !='') %>% 
+                  group_by(company_name)%>%
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(20)
+ 
+ 
+Project_Data$Top_company_name = ifelse(Project_Data$company_name %in% top_co_name$company_name, Project_Data$company_name, "Other")
+```
+# Introduction
+
+Raising money is always an important aspect in a successful startup. Getting the basics right and having a solid business plan is an essential step. Ironically though, it's not enough. With the fierce competiton in almost every field, having a saleable product needs to complimented with an effective strategy in terms of targeting the right investors. As as entrepreneur, if you were to seek funding, what else should you consider? Here are the typical questions one might have:
+
+- I don't work in venture capital or finance, so I don't know what is the difference between Angel investors, Venture investors and others. Whom should I approach for funding?
+
+- Does being funded have any relation with the category or domain of the startup?
+
+- Which industries are having least competition for getting funded?
+
+They say, "Those who cannot learn from history are doomed to repeat it." So, what does historical data tell us? Read on to know more.
+
+This report attempts to address the above concerns based on our analysis of the global trends in startup funding. This analysis was performed on the [Crunchbase dataset](https://data.crunchbase.com/docs/funding-round) from [Mode Analytics](https://modeanalytics.com/avanti_likhite/reports/b4e227db8a0b/queries/ae79f3c1022a/data) for the duration of 2005-2013.
+
+We analyzed about 73,000 funding activities, reported by Crunchbase. This involved more than 15,000 investors providing funding to over 18,000 different companies, with total amount funded exceeding $ 335 billion.
+
+# Overall Funding Trend
+
+Before going deeper, let's understand the overall trends in terms of the number of startups being funded, year over year. This trend has been very encouraging, especailly after the recession of 2009. From the graph we can clearly see that the number of startups that were able to raise money has been increasing steadily post 2009.
+
+
+```{r echo = FALSE, include = TRUE}
+data <- Project_Data %>% 
+    group_by(funded_year) %>% 
+    summarise(CompanyCount=n())
+  
+plot_ly(data, x=data$funded_year) %>%
+    layout(title="Total number of companies being funded in the year is steadily increasing",
+        xaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=2,
+        tickwidth=1,
+        tickcolor='#000'),
+        yaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=4,
+        tickwidth=1,
+        tickcolor='#000',title=' Total companies funded in the year')) %>% 
+    add_lines(y=data$CompanyCount, name='Total companies funded')
+```
+
+*****
+
+# Funding Types Demystified
+
+There are several types of funding. However, based on our analysis, each is different in terms of the amount raised. The amount you want to raise will decide what type of funding you should look for. So, here is a simple table mapping the typical amount to be raised and the type of funding suited for each, with the frequency of funding, so far:
+
+```{r echo = FALSE, include = TRUE}
+# Plot difference line graph that uses data from Post dataframe. The plot is faceted based on the type of spending on ads and whether there is any in store promo or not.
+
+kable(
+Project_Data %>%
+    filter(funding_round_type !="") %>% 
+    filter(funding_round_type !="other") %>% 
+    group_by(funding_round_type) %>%
+  summarise(Median_Amount=as.double(format(round(median(raised_amount_usd)/1e6, 1), trim = TRUE)), Total_Count=n()) %>% 
+  arrange(Median_Amount) %>% 
+  select("Funding Type"= funding_round_type, "Amount in $ millions" = Median_Amount, "Frequency of funding"=Total_Count),
+format = "html") %>% 
+  kable_styling()
+
+```
+
+"Angel", "Venture" and the various "Series" fundings seem to be the most popular funding types, with crowdfunding being the least common, perhaps due to it being not as structured as others.
+
+Now, let's take try to understand how choice of industry changes the funding opportunities.
+
+# Funding by Industry
+Let's look at the hottest industries in terms of the number of startups being funded and the numbers of investors funding in a given industry.
+
+## Number of funded companies by Industry
+
+"Software" seems to be the industry wherein the maximum number of fundigs has happened, followed by "Biotech" and "Mobile". In other words, the startups in these industries are being seen to be solving critical problems in a commercially viable manner.
+
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = length(unique(company_name))) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Number of companies funded")+
+  xlab(" ")+
+      ggtitle(" ")+ 
+geom_bar(stat="identity",position = "dodge" ,fill = "orange")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1e3, 1), trim = TRUE), "k")), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("Number of companies funded in the software category is the highest")
+```
+
+Given that there is so much competition in the Software industry, let's see if supply is following this demand.
+
+*****
+
+## Number of investors by Industry
+
+As expected, "Software" seems to be the industry wherein maximum number of fundigs has happened, followed by "Mobile" and "Web. Interestingly, "Biotech" does not seem to attract as many investors, as the number of startups, competing to get funded.
+
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = length(unique(investor_name))) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Number of investors")+
+  xlab(" ")+
+geom_bar(stat="identity",position = "dodge" ,fill = "darkgreen")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1e3, 1), trim = TRUE), "k")), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("More investors are investing in the software category")
+```
+
+Let's take a look at which industries are having least competition in terms of getting funded.
+
+## Investors to startups ratio by Industry
+
+While prima facie, Software, Biotech and Web industries seem to be dominating in terms of absolute volume, when it comes to the number of investors to the number of startups ratio, they seem to be nowhere in the top 10. This implies that the investors are keen on supporting other industries such as Public Relations, however, the industry is not able to cope with the demand. More funding opportunities are avalable for startups in these industries.
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+    #filter(company_category_code!='Other') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = length(unique(investor_name))/length(unique(company_name))) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Investors to startups ratio")+
+  xlab(" ")+
+geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  geom_text(aes(label = paste(format(round(TotalAmount, 1), trim = TRUE))), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("4 investors are willing to fund a company in Public Relations industry")
+```
+
+# Conclusion
+
+To summarize, while having a solid and commercially viable business plan is a critical starting point for building a successful startup, being able to attract funding is equally important to scale and capitalize on the early success.
+
+Among the various factors that decide the ability to get funded, targetting the right investors is an important first step. Entrepreneurs are advised to identify their needs and come up with a tentative funding amount, matching their needs. This amount will drive the target type of your funding and in turn will help you identify the target investors or big players.
+
+If you are a budding entrepreneur, who is flexible enough to solve a challenge in any domain, choosing a problem targetting less saturated industries, such as "Public Relation", "Transportation" or "Nanotech", would increase the likelihood of getting funding support in your endeavor.
+
+All in all, be informaed about your needs and do a thorough study of which investors are likely to fund your efforts, in order to maximize your success. With a combination of hard work and targetted efforts, undoubtedly, success will be yours!
+
+
+*****

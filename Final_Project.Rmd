@@ -1,0 +1,965 @@
+---
+title: "Technical Appendix for Final Project BUAN"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: True
+    df_print: paged
+---
+
+Author: Avanti
+
+Date:  `r format(Sys.time(), '%B %d, %Y')`
+
+```{r echo = FALSE, include = TRUE}
+# Course: BUAN 5210
+# Title: Final Project BUAN
+# Purpose: Perform EDA on the Data 
+# Date: `r format(Sys.time(), '%B %d, %Y')`
+# Author: Avanti
+ 
+```
+
+```{r echo = FALSE, include = FALSE}
+
+# Clear working environment
+
+rm(list=ls(all=TRUE)) 
+
+library(tidyverse)
+library(gridExtra)
+library(GGally)
+library(shiny)
+library(lubridate)
+library(plotly)
+library(knitr)
+library(formattable)
+library(zoo)
+library(ggthemes)
+library(xtable)
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+```{r echo = FALSE, include = TRUE}
+# Load data in a dataframe
+Project_Data <- read.csv("Project.csv",stringsAsFactors = FALSE)
+#Remove the funding details if the funding was done before 2004
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year>=2005))
+#Since we don't have much data after 2013 let's limit our analysis to data before 2014
+Project_Data<-mutate(Project_Data%>%filter(Project_Data$funded_year <2014))
+
+Project_Data <- mutate(Project_Data %>% na.omit(Project_Data)) 
+
+head(Project_Data,9) 
+```
+
+Study the Summary of the data
+
+```{r echo = FALSE, include = TRUE}
+summary(Project_Data)
+
+```
+
+
+Study the  structure of the data-
+```{r echo = FALSE, include = TRUE}
+str(Project_Data)
+```
+
+Univariate Graphical -- Quantitative
+=========================================
+Numeric data - Graphical
+```{r echo = FALSE, include = TRUE}
+
+par(mfrow=c(2,3))
+
+    ggplot(Project_Data, aes(x =log(raised_amount_usd))) +
+    geom_histogram()
+
+    ggplot(Project_Data, aes(x = funded_year)) +
+    geom_histogram()
+
+```
+
+From the histogram it is clear that there is not much data about the years before 2005, so lets limit our data to take into account only the funding done between 2005 to 2013
+
+As expected the amount raised by companies has a very wide range and by plotting the histogram of the log(amount_raised_usd) follows a nearly normal distribution.
+More and more companies have been able to raise capital over the years.
+As expected there is a slight slowdown in 2009 (recession)
+
+Univariate Graphical -- Qualitative
+=========================================
+```{r echo = FALSE, include = TRUE}
+# Study the distribution of categorical variables
+par(mfrow=c(1,3))
+
+  barplot(table(Project_Data$company_category_code), main = "company_category_code")
+  barplot(table(Project_Data$company_country_code), main = "company_country_code")
+    barplot(table(Project_Data$funding_round_type), main = "funding_round_type")
+    
+```
+
+It is very clear that USA has the most frequent funding activity.
+
+
+From the histograms and the summary we can see that there are quite a few outliers in variables like company_country,investor _country, category of the companies etc , so we will try to re-classify the levels for these variables.
+
+Univariate Non-Graphical Qualitative
+=========================================
+Top or most frequent levels for the various categorical variables
+
+Since we have many categories in several variables but only a few are repeated frequently,we will re-classify the levels for these variables so that visualization becomes easier. We will keep the 7 most important levels for each categorical variables and group all the other as a new level "Other".
+
+The most funded categories of companies are and number of entries for each:
+```{r echo = FALSE, include = TRUE}
+top_co_category<-Project_Data %>%
+                 filter(company_category_code!='') %>% 
+                 group_by(company_category_code) %>% 
+                 summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                 arrange(desc(TotalAmount)) %>%
+                 head(7)
+
+Project_Data$Top_Company_Category = ifelse(Project_Data$company_category_code %in% top_co_category$company_category_code, Project_Data$company_category_code, "Other")
+
+(table(Project_Data$Top_Company_Category))
+
+```
+
+
+The category from which max investors contributed and number of entries for each:
+```{r echo = FALSE, include = TRUE}
+top_inv_category<-Project_Data %>%
+                  filter(investor_category_code!='' & investor_category_code !="other") %>% 
+                  group_by(investor_category_code) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+Project_Data$Top_investor_Category = ifelse(Project_Data$investor_category_code %in% top_inv_category$investor_category_code, Project_Data$investor_category_code, "Other")
+ 
+(table(Project_Data$Top_investor_Category)) 
+```
+
+
+7 countries where the highest amount was funded and number of entries for each:
+```{r echo = FALSE, include = TRUE}
+top_co_country<- Project_Data %>%
+                  filter(company_country_code!='') %>% 
+                  group_by(company_country_code) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+
+
+Project_Data$Top_company_country = ifelse(Project_Data$company_country_code %in% top_co_country$company_country_code, Project_Data$company_country_code, "Other")
+
+(table(Project_Data$Top_company_country)) 
+```
+
+
+7 Countries from where max investing companies originated from and number of entries for each:
+```{r echo = FALSE, include = TRUE}
+
+ top_inv_country<-Project_Data %>%
+                  filter(investor_country_code!='') %>% 
+                  group_by(investor_country_code) %>% 
+                  summarise(TotalAmount = n()) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+ 
+ 
+Project_Data$Top_investor_country = ifelse(Project_Data$investor_country_code %in% top_inv_country$investor_country_code, Project_Data$investor_country_code, "Other")
+
+(table(Project_Data$Top_investor_country)) 
+
+```
+
+
+The most important investor companies and number of entries for each:
+```{r echo = FALSE, include = TRUE}
+
+ top_inv_name<-Project_Data %>%
+                  filter(investor_name!='') %>% 
+                  group_by(investor_name) %>% 
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(7)
+ 
+Project_Data$Top_investor_name = ifelse(Project_Data$investor_name %in% top_inv_name$investor_name, Project_Data$investor_name, "Other")
+
+(table(Project_Data$Top_investor_name)) 
+
+```
+ 
+ 
+ The 20 companies that raised the max amount and number of times each was funded:
+```{r echo = FALSE, include = TRUE}
+
+top_co_name<-Project_Data %>%
+                  #filter(company_name !='') %>% 
+                  group_by(company_name)%>%
+                  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+                  arrange(desc(TotalAmount)) %>% 
+                  head(20)
+ 
+ 
+Project_Data$Top_company_name = ifelse(Project_Data$company_name %in% top_co_name$company_name, Project_Data$company_name, "Other")
+
+(table(Project_Data$Top_company_name)) 
+
+```
+
+Thus we see that region wise USA is more important than all other countries combined together.
+
+
+```{r echo = FALSE, include = TRUE}
+(prop.table(table(Project_Data$funding_round_type))*100)
+
+```
+As observed from the above plot as well as the table  Series a type of funding has been the most common type of funding, whereas the post-ipo funding is very rare.
+
+
+Bivariate Non-Graphical 
+=========================================
+The most important categories and sum of amount raised by each:
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10)
+```
+
+Bivariate Graphical 
+=========================================
+
+#How is the overall trend in funding of startups? 
+Lets try to analyse the chnage in funding trends over time:
+```{r echo = FALSE, include = TRUE}
+
+data <- Project_Data
+
+data <- data %>% 
+    group_by(funded_year) %>% 
+    summarise(CompanyCount=n())
+  
+  plot_ly(data, x=data$funded_year) %>%
+    layout(xaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=2,
+        tickwidth=1,
+        tickcolor='#000'),
+        yaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=4,
+        tickwidth=1,
+        tickcolor='#000',title=' Total companies funded in the year')) %>% 
+    add_lines(y=data$CompanyCount, name='Total companies funded')
+```
+
+Thus we see that the overall trend for funding of startups has been very good specailly after the recession of 2009.
+From the graph we can clearly see that the number of startups that were able to raise money has been increasing steadily post 2009.
+
+Also if we check the  total amount raised over per year by startups it shows a very positive trend.
+
+```{r echo = FALSE, include = TRUE}
+
+data <- Project_Data
+
+data <- data %>% 
+    group_by(funded_year) %>% 
+    summarise(TotalInvestment=sum(raised_amount_usd))
+  
+  plot_ly(data, x=data$funded_year) %>%
+    layout(xaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=2,
+        tickwidth=1,
+        tickcolor='#000'),
+        yaxis = list(
+        tickfont = list(family="Arial, sans-serif",size = 16, color="Black"),
+        showticklabels = TRUE,showgrid = F,zeroline=FALSE ,showline=TRUE,ticks='-',ticks="outside",ticklen=4,
+        tickwidth=1,
+        tickcolor='#000',title='Amount in $')) %>% 
+    add_lines(y=data$TotalInvestment, name='Total Amount raised')
+```
+
+
+#What are the major categories that attract investors as well as major categories of investors?
+```{r echo = FALSE, include = TRUE}
+grid.arrange(   
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("company category ")+coord_flip(),
+
+
+Project_Data %>%
+  filter(investor_category_code!='') %>% 
+  group_by(investor_category_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(investor_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("investor category ")+coord_flip(),
+
+nrow=2)
+```
+
+
+The hottest category as apparant from the funding are 
+1. Biotech
+2. Software
+3. Mobile 
+4. Cleantech
+5. Enterprise
+
+However the most important categories of company that help in raising money are 
+1. Hardware
+2. Software
+3. Web
+4. Search
+5. Gaming
+
+Thus we can say that the investors are investing money outside their areas of operation may be with an intention to diversify their portfolios.
+
+# Has the inclination of investors changed towards any specific category.
+```{r echo = FALSE, include = TRUE}
+
+Project_Data %>%
+  filter(Top_Company_Category !="Other") %>% 
+      group_by(Top_Company_Category,funded_year) %>%
+  summarise(Total_Amount=sum(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facet=.~Top_Company_Category)
+
+```
+
+Thus we see that cleantech and mobile categories haven't been able to raise amounts the way they used to before the recession of 2009.Also we can see that web services has also seen a slight slump towards 2012.
+
+We expect the effects of recession to be more clearly visible when we look at the yearly trends of top investors.
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(Top_investor_Category !="Other") %>% 
+      group_by(Top_investor_Category,funded_year) %>%
+  summarise(Total_Amount=sum(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facet=.~Top_investor_Category)
+
+```
+
+As expected we can clearly see that the sum of amount invested by companies has reduced significantly during 2008-2009 and The investors are refraining from making huge investments.
+
+
+
+Let us also look at the major investors and also the companies that were able to raise max funds
+The companies that raised maximum funding and the companies that invested max amount
+```{r echo = FALSE, include = TRUE}
+
+grid.arrange(   
+Project_Data %>%
+  filter(investor_name!='') %>% 
+  group_by(investor_name) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(investor_name), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("investor  ")+coord_flip(),
+
+Project_Data %>%
+  filter(company_name!='') %>% 
+  group_by(company_name) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(company_name), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("companies  ")+coord_flip(),
+nrow=2)
+```
+
+Let's draw a word cloud of investor names to identify big players:
+```{r echo = FALSE, include = TRUE}
+makeWordCloud <- function(documents) {
+  corpus = VCorpus(VectorSource(tolower(documents)))
+  
+  frequencies = DocumentTermMatrix(corpus)
+  word_frequencies = as.data.frame(as.matrix(frequencies))
+  
+  words <- colnames(word_frequencies)
+  freq <- colSums(word_frequencies)
+  
+  wordcloud(words, freq,
+            min.freq=sort(freq, decreasing=TRUE)[[10]],
+            scale=c(1,.5),
+            colors=brewer.pal(8, "Dark2"),
+            random.color=TRUE)
+}  
+
+makeWordCloud(Project_Data %>%
+  select(investor_name) %>% 
+  mutate(investor_name = gsub(" ", "_", Project_Data[["investor_name"]], fixed = TRUE))) # Replace spaces with underscore
+```
+
+#Has the funding style of various investors changed over years? 
+```{r echo = FALSE, include = TRUE}
+
+Project_Data %>%
+  filter(Top_investor_name!= 'Other') %>% 
+      group_by(Top_investor_name,funded_year) %>%
+  summarise(Total_Amount=sum(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facet=.~Top_investor_name)
+
+
+```
+
+Now let us check for individual investors
+```{r echo = FALSE, include = TRUE}
+grid.arrange(
+Project_Data %>%
+  filter(Top_investor_name == 'Google') %>% 
+   filter(Top_investor_name != 'Other') %>% 
+  filter(Top_Company_Category != 'Other') %>% 
+      group_by(Top_Company_Category) %>%
+  summarise(count=n()) %>%
+  ggplot(aes(x=Top_Company_Category, y=count))+
+  geom_bar(stat="identity"),
+
+Project_Data %>%
+  filter(Top_investor_name == 'Intel Capital') %>% 
+   filter(Top_investor_name!= 'Other') %>% 
+    filter(Top_Company_Category != 'Other') %>% 
+
+      group_by(Top_Company_Category) %>%
+  summarise(count=n()) %>%
+  ggplot(aes(x=Top_Company_Category, y=count))+
+  geom_bar(stat="identity"),
+Project_Data %>%
+  filter(Top_investor_name == 'Intel Capital') %>% 
+   filter(Top_investor_name!= 'Other') %>% 
+    filter(Top_Company_Category != 'Other') %>% 
+
+      group_by(Top_Company_Category) %>%
+  summarise(count=n()) %>%
+  ggplot(aes(x=Top_Company_Category, y=count))+
+  geom_bar(stat="identity"),
+Project_Data %>%
+  filter(Top_investor_name == 'Intel Capital') %>% 
+   filter(Top_investor_name!= 'Other') %>% 
+    filter(Top_Company_Category != 'Other') %>% 
+
+      group_by(Top_Company_Category) %>%
+  summarise(count=n()) %>%
+  ggplot(aes(x=Top_Company_Category, y=count))+
+  geom_bar(stat="identity"),
+
+nrow=2)
+```
+
+
+#Which countries are  the hottest destinations for investing money ?
+```{r echo = FALSE, include = TRUE}
+
+grid.arrange(
+
+ Project_Data %>%
+  filter(company_country_code!='') %>% 
+  group_by(company_country_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(company_country_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle(" investment lucrative countries"),
+  
+ Project_Data %>%
+  filter(Top_company_country!='') %>% 
+  group_by(Top_company_country) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(Top_company_country), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle(" investment lucrative countries"),
+ 
+ nrow=2
+)
+```
+
+
+# Which countries have the max number of investor companies?
+```{r echo = FALSE, include = TRUE}
+
+grid.arrange(
+
+
+Project_Data %>%
+  filter(investor_country_code!='') %>% 
+  group_by(investor_country_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(investor_country_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("investor countries "),
+
+Project_Data %>%
+  filter(Top_investor_country!='') %>% 
+  group_by(Top_investor_country) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(7) %>% 
+  ggplot(aes(x= reorder(factor(Top_investor_country), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("investor countries ")+theme_tufte(),
+nrow=2
+)
+
+```
+
+Thus we see that USA is a major player in both investment as well as investor countries indicating that the $ amount investment is max for USA
+
+#Do all countries have similar cashflows?
+```{r echo = FALSE, include = TRUE}
+
+subset1<-subset(Project_Data, company_country_code != "" & investor_country_code !="")
+subset1<-subset(subset1,company_country_code != investor_country_code )
+
+
+(cbind(subset1 %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Raised=sum(raised_amount_usd)),
+
+subset1 %>% 
+    group_by(Top_investor_country) %>%
+  summarise(Total_Invested=sum(raised_amount_usd))))
+
+```
+
+From the above table we can see that countries like US,China,Canada and India have a net cash Inflow,whereas countries like Germany, France, Great Britan and Israil have a net Cash outflow.
+Which means countries like US,China,Canada and India are more attractive for investors whereas more companies from countries like Germany, France, Great Britan and Israil invest money in markets other than their domestic market.
+
+Now we have seen that the funded amount or the raised amount has a very wider range and hence we should check if the sum is inflated due to small number of big funding rounds.
+
+
+#Is USA the only major country for investor and entrepreneurs ?
+For that lets check the median of the $ amount invested in various countries over the years:
+```{r echo = FALSE, include = TRUE}
+#Funding trends in top company country codes
+Project_Data %>%
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount, group = 1))+
+  geom_line()+
+  facet_grid(facet=.~Top_company_country)+ggtitle("Average of Amount invested IN the country")
+
+Project_Data %>%
+      group_by(Top_investor_country,funded_year) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount, group = 1))+
+  geom_line()+
+  facet_grid(facet=.~Top_investor_country)+ggtitle("Average of Amount invested BY the countries ")
+
+```
+
+This clearly gives us a very different picture of the investment trends.
+
+Thus we can say that when we consider the sum of amounts raised then USA is outshining all other countries but when we consider the impact of a few outlier deals we can see that instead of USA, CHINA now appears to be the most important country
+
+
+#Which is the most commonly used type of funding?
+
+```{r echo = FALSE, include = TRUE}
+grid.arrange(
+  
+Project_Data %>%
+  filter(funding_round_type !=" ") %>% 
+  group_by(funding_round_type) %>% 
+  summarise(Count = n()) %>% 
+  arrange(desc(Count)) %>% 
+  ggplot(aes(x= (factor(funding_round_type)),y=Count))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("Frequency of type of funding "),
+
+
+Project_Data %>%
+  filter(funding_round_type !=" ") %>% 
+  group_by(funding_round_type) %>% 
+  summarise(Total_Amount = sum(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= (factor(funding_round_type)),y=Total_Amount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+
+      ggtitle("Amount raised by type of funding  "),
+nrow=2
+)
+```
+
+We can clearly see that there is a lot of discrpancy in the number of times a type of funding took place and the total amount raised by that type of funding
+
+
+This can be further confirmed from the table
+```{r echo = FALSE, include = TRUE}
+##FOR SIDEBAR
+  
+ Project_Data %>%
+    filter(funding_round_type !="") %>% 
+    filter(funding_round_type !="other") %>% 
+    group_by(funding_round_type) %>%
+  summarise(Median_Amount=median(raised_amount_usd)) %>% 
+  arrange(desc(Median_Amount))
+
+```
+
+Amount raised by type of funding till 2014
+```{r echo = FALSE, include = TRUE}
+
+
+Project_Data %>%
+  filter(funding_round_type!=" ") %>% 
+    group_by(funding_round_type) %>%
+  summarise(Total_Amount=sum(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount))
+
+```
+Since we have very few entries for Crowdfunding and others we will ignore those types of funding
+Also since we are bothered about the funding of startups we will ignore Post-ipo funding.
+
+Also we can notice that the number of times series-c+ funding took place was low but the since the amount raised by this type of funding is very high it plays a very important role if we consider the sum or mean of amount raised.
+Thus it is interesting to look at the total Amount raised by Type of funding over the years
+```{r echo = FALSE, include = TRUE}
+
+Project_Data %>%
+  filter(funding_round_type !="post-ipo")%>% 
+  filter(funding_round_type!="other") %>% 
+    group_by(funding_round_type,funded_year) %>%
+  summarise(Total_Amount=sum(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~funding_round_type )+
+ggtitle("Total Amount raised by Type of funding over the years")
+```
+
+#Has the amount raised by type of funding changed over the time for various countries 
+
+For that let's take the Median amount raised by type of funding accross Countries:
+```{r echo = FALSE, include = TRUE}
+
+Project_Data %>%
+  filter(funding_round_type=="angel") %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+ggtitle("angel")
+
+Project_Data %>%
+  filter(funding_round_type=="private-equity") %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+      ggtitle('private-equity')
+
+Project_Data %>%
+  filter(funding_round_type=="series-a") %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+      ggtitle('series-a')
+
+Project_Data %>%
+filter(funding_round_type== 'series-b') %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+      ggtitle('series-b')
+
+Project_Data %>%
+    filter(funding_round_type=="series-c+") %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+    ggtitle('series-c+')
+    
+Project_Data %>%
+filter(funding_round_type=="venture") %>% 
+    group_by(Top_company_country,funded_year) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  ggplot(aes(x=funded_year, y=Total_Amount))+
+  geom_line()+
+  facet_grid(facets = .~Top_company_country )+
+    ggtitle('venture')
+
+```
+
+#Does the type of funding used to raise money vary by the company category:
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(funding_round_type == 'angel') %>%
+   group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  ggtitle('venture')+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5)) + 
+  ggtitle(" angel ")  + 
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+
+
+Project_Data %>%
+  filter(funding_round_type == 'private-equity') %>% 
+    #filter(Top_Company_Category != 'Other') %>%
+       group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5)) + 
+  ggtitle("private-equity ")  + 
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+
+Project_Data %>%
+  filter(funding_round_type == 'series-a') %>%
+   # filter(Top_Company_Category != 'Other') %>%
+       group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  ggtitle('series-a')+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5)) + 
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+
+
+Project_Data %>%
+  filter(funding_round_type == 'series-b') %>%
+    #filter(Top_Company_Category != 'Other') %>%
+       group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  ggtitle('series-b')+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5)) + 
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+
+
+Project_Data %>%
+  filter(funding_round_type == 'series-c+') %>%
+    #filter(Top_Company_Category != 'Other') %>%
+       group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  ggtitle('series-c+')+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5)) + 
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+Project_Data %>%
+  filter(funding_round_type == 'venture') %>%
+  #filter(Top_Company_Category != 'Other') %>%
+  group_by(funding_round_type,Top_Company_Category) %>%
+  summarise(Total_Amount=median(raised_amount_usd)) %>%
+  arrange(desc(Total_Amount)) %>% 
+  ggplot(aes(x= reorder(factor(Top_Company_Category),desc(Total_Amount)) , y=Total_Amount,fill=Top_Company_Category ))+
+  geom_bar(stat="identity",position = "dodge" ,fill = "orchid")+
+  ggtitle('venture')+
+  geom_text(aes(label = paste(format(round( Total_Amount/ 1e6, 1), trim = TRUE), "M")), 
+            hjust = .5,vjust = -0.3,size=5 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  theme(axis.title.x = element_blank())
+
+```
+
+# Are there any types of funding that are more prevalent in some countries over others?
+For this we will try to study the average amount raised by different types of funding in each of the top 7 countries.
+```{r echo = FALSE, include = TRUE}
+ Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="angel") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+
+Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="private-equity") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+
+Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="series-a") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+
+Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="series-b") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+
+
+Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="series-c+") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+
+Project_Data %>%
+    filter( Top_company_country!="") %>% 
+    filter(funding_round_type =="venture") %>% 
+    group_by(Top_company_country) %>%
+  summarise(Total_Amount=mean(raised_amount_usd)) %>% 
+  arrange(desc(Total_Amount))
+```
+
+
+```{r echo = FALSE, include = TRUE}
+
+library(kableExtra)
+
+tab<-kable(as.data.frame(
+Project_Data %>%
+   filter(funding_round_type !="") %>% 
+   filter(funding_round_type !="other") %>% 
+   group_by(funding_round_type) %>%
+ summarise(Median_Amount=as.double(format(round(median(raised_amount_usd)/1e6, 1), trim = TRUE))) %>% 
+ arrange(Median_Amount) %>% 
+ select("Type of funding"= funding_round_type, "Amount in $ millions" = Median_Amount)),
+format = "html",padding=-1L) %>% 
+ kable_styling()
+tab
+
+```
+
+
+# How many companies from each categroy are funded ?
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = n()) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Number of companies funded")+
+  xlab(" ")+
+      ggtitle(" ")+ 
+geom_bar(stat="identity",position = "dodge" ,fill = "blue")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1e3, 1), trim = TRUE))), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("Number of companies funded in the software category is the highest ")
+```
+
+#Which is the category with the highest amount being funded?
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = sum(raised_amount_usd)) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Total amount raised in billions of $")+
+  xlab(" ")+
+      ggtitle(" ")+ 
+geom_bar(stat="identity",position = "dodge" ,fill = "orange")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1e9, 1), trim = TRUE))), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  scale_y_continuous(labels=c("0","50","100","150"))+
+  ggtitle("Biotech is the highest funded Category of companies ")
+
+```
+
+
+# Number of investors who have funded in each category?
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = length(unique(investor_name))) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Number of investors")+
+  xlab(" ")+
+geom_bar(stat="identity",position = "dodge" ,fill = "orange")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1e3, 1), trim = TRUE),"k")), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("More investors are investing in the software category")
+
+```
+"Software" seems to be the industry wherein maximum number of fundigs has happened, followed by "Mobile" and "Web. Interestingly, "Biotech" does not seem to attract as many investors, as the number of startups, competing to get funded.
+
+# Which are the least saturated industries?
+
+```{r echo = FALSE, include = TRUE}
+Project_Data %>%
+  filter(company_category_code!='') %>% 
+    #filter(company_category_code!='Other') %>% 
+  group_by(company_category_code) %>% 
+  summarise(TotalAmount = length(unique(investor_name))/length(unique(company_name))) %>% 
+  arrange(desc(TotalAmount)) %>% 
+  head(10) %>% 
+  ggplot(aes(x= reorder(factor(company_category_code), desc(TotalAmount)),y=TotalAmount))+
+      geom_bar(stat="identity", position = "dodge",na.rm = TRUE)+ylab("Investors to startups ratio")+
+  xlab(" ")+
+geom_bar(stat="identity",position = "dodge" ,fill = "orange")+
+  geom_text(aes(label = paste(format(round( TotalAmount/ 1, 1), trim = TRUE))), 
+            hjust =-.1,vjust = .5,size=4 ,position = position_dodge(width = 0.5))+
+  theme_classic() +
+  coord_flip()+
+  ggtitle("4 investors are willing to fund a company in Public Relations industry")
+
+```
+
+While prima facie, Software, Biotech and Web industries seem to be dominating in terms of absolute volume, when it comes to the number of investors to the number of startups ratio, they seem to be nowhere in the top 10. This implies that the investors are keen on supporting other industries such as Public Relations, however, the industry in not able to cope with the demand. More funding opportunities are avalable for startups in these industries.
