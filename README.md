@@ -1,6 +1,6 @@
 # Global Trends in Startup Funding
-We have analyzed the funding data for various companies from 2005 to 2013, across the globe.
-been developed using the [Crunchbase dataset](https://data.crunchbase.com/docs/funding-round) from [Mode Analytics](https://modeanalytics.com/avanti_likhite/reports/b4e227db8a0b/queries/ae79f3c1022a/data).
+This project depicts the results of my analysis of the funding data for various companies from 2005 to 2013, across the globe.
+The [Crunchbase dataset](https://data.crunchbase.com/docs/funding-round) from [Mode Analytics](https://modeanalytics.com/avanti_likhite/reports/b4e227db8a0b/queries/ae79f3c1022a/data) is the primary source of the data backing this analysis.
 
 ## Project Structure
 1. Project.csv: Raw data from Mode Analytics
